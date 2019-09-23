@@ -36,14 +36,20 @@ class Server:
         self.get_clients()
 
     def execute(self, command):
-        print(command)
-        words = command.split()
-        verb = words[0].lower()
-        if verb == "send":
-            self.send(words[1], words[2])
-        elif verb == "disconnect":
-            self.disconnect()
-        pass
+        try:
+            words = command.split(maxsplit=1)
+            verb = words[0].lower()
+            if verb == "send":
+                x = words[1].split(':', maxsplit=1)
+                to = x[0]
+                message = x[1]
+                self.send(to, message)
+            elif verb in ["sendall", "sendall:"]:
+                self.send(str(0), words[1])
+            elif verb == "disconnect":
+                self.disconnect()
+        except:
+            pass
 
     def get_clients(self):
         self.sock.send("WHOO\n".encode())
@@ -75,7 +81,7 @@ class Server:
                         from_client = self.get_user_by_id(id_message[0].strip())
                         if from_client is not None:
                             from_username = from_client.get_username(from_client)
-                        print("message recieved from {0}: \"{1}\"".format(from_username, id_message[1].split('\n')[0].strip()))
+                            print("message recieved from {0}: \"{1}\"".format(from_username, id_message[1].split('\n')[0].strip()))
                     # if the client didn't exist in our client list, try to
                     # refresh the list of connected clients first and try once more
 
@@ -84,7 +90,7 @@ class Server:
                     self.clients.append(Client(userid=id_user[0].strip(), username=id_user[1].strip()))
 
     def send(self, to, message):
-        self.sock.send("SEND {0} {1}\n".format(to, message).encode())
+        self.sock.send("SEND {0}:{1}\n".format(to, message).encode())
 
     def new_client(self):
         pass
