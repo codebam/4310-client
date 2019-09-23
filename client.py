@@ -8,7 +8,7 @@ VERSION = "FC1"
 user_input = [None] # global for input between threads
 
 class Client:
-    def init(self, username=None, userid=None):
+    def __init__(self, username=None, userid=None):
         self.username = username
         self.userid = userid
 
@@ -16,14 +16,14 @@ class Server:
     def __init__(self, ip, port):
         self.ip = ip
         self.port = port
-        self.clients = [Client]
+        self.clients = [Client()]
 
     def connect(self):
         # connect and set ip and clients
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(None) # make socket non-blocking
         self.sock.connect((self.ip, self.port))
-        self.reciever = threading.Thread(target=self.recieve, args=(user_input))
+        self.reciever = threading.Thread(target=self.recieve)
         self.reciever.daemon = True
         self.reciever.start()
         self.connected = True
@@ -33,6 +33,7 @@ class Server:
         self.sock.send("LOGN {0} {1}\n".format(username, VERSION).encode())
         data = self.sock.recv(256)
         self.id = data[4:].strip().decode()
+        self.get_clients()
 
     def execute(self, command):
         print(command)
@@ -44,16 +45,43 @@ class Server:
             self.disconnect()
         pass
 
+    def get_clients(self):
+        self.sock.send("WHOO\n".encode())
+
     def disconnect(self):
         self.sock.send("GDBY\n".encode())
         self.connected = False
 
-    def recieve(self, content):
+    def get_user_by_id(self, userid):
+        for c in self.clients:
+            if c.userid == userid:
+                return c
+        return None
+
+    def recieve(self):
         while True:
             data = self.sock.recv(256)
             if data != b'':
-                print(data.decode())
-    # pass onto verb functions
+                words = data.decode().split(maxsplit=1)
+                command = words[0]
+                if command == "RECV":
+                    id_message = words[1].split(':')
+                    from_client = self.get_user_by_id(id_message[0].strip())
+                    if from_client is not None:
+                        from_username = from_client.username
+                        print("message recieved from {0}: \"{1}\"".format(from_username, id_message[1].split('\n')[0].strip()))
+                    else:
+                        self.get_clients()
+                        from_client = self.get_user_by_id(id_message[0].strip())
+                        if from_client is not None:
+                            from_username = from_client.get_username(from_client)
+                        print("message recieved from {0}: \"{1}\"".format(from_username, id_message[1].split('\n')[0].strip()))
+                    # if the client didn't exist in our client list, try to
+                    # refresh the list of connected clients first and try once more
+
+                elif command == "CONN":
+                    id_user = words[1].split(':')
+                    self.clients.append(Client(userid=id_user[0].strip(), username=id_user[1].strip()))
 
     def send(self, to, message):
         self.sock.send("SEND {0} {1}\n".format(to, message).encode())
