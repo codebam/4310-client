@@ -1,8 +1,5 @@
 import socket
-import select
-import sys
 import threading
-from typing import Tuple
 
 VERSION = "FC1"
 user_input = [None] # global for input between threads
@@ -22,12 +19,16 @@ class Server:
         # connect and set ip and clients
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(None) # make socket non-blocking
-        self.sock.connect((self.ip, self.port))
-        self.reciever = threading.Thread(target=self.recieve)
-        self.reciever.daemon = True
-        self.reciever.start()
-        self.connected = True
-        print("connected!")
+        try:
+            self.sock.connect((self.ip, self.port))
+            self.reciever = threading.Thread(target=self.recieve)
+            self.reciever.daemon = True
+            self.reciever.start()
+            self.connected = True
+            print("connected!")
+        except ConnectionRefusedError:
+            self.connected = False
+            print("connection refused.")
 
     def login(self, username):
         self.sock.send("LOGN {0} {1}\n".format(username, VERSION).encode())
@@ -115,15 +116,15 @@ disconnect\n""")
     server.connect()
     # open socket to server
 
-    username = str(input("Enter your username: "))
-    server.login(username)
+    if server.connected:
+        username = str(input("Enter your username: "))
+        server.login(username)
     # initiate connection
 
-    # start listening
     while server.connected:
         command = str(input("enter a command: "))
         server.execute(command)
-    # show verb prompt
+    # show prompt
     print("connection closed.")
 
 if __name__ == "__main__":
