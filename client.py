@@ -32,14 +32,13 @@ class Server:
 
     def login(self, username):
         self.sock.send("LOGN {0} {1}\n".format(username, VERSION).encode())
-        data = self.sock.recv(256)
-        self.id = data[4:].strip().decode()
         self.get_clients()
 
     def execute(self, command):
         try:
             words = command.split(maxsplit=1)
             verb = words[0].lower()
+
             if verb == "send":
                 x = words[1].split(':', maxsplit=1)
                 to = x[0]
@@ -63,41 +62,55 @@ class Server:
         for c in self.clients:
             if c.userid == userid:
                 return c
+
         return None
 
     def recieve(self):
         while True:
             data = self.sock.recv(256)
+
             if data != b'':
                 words = data.decode().split(maxsplit=1)
                 command = words[0]
+
                 if command == "RECV":
                     id_message = words[1].split(':')
                     from_client = self.get_user_by_id(id_message[0].strip())
+
                     if from_client is not None:
                         from_username = from_client.username
                         print("message recieved from {0}: \"{1}\"".format(from_username, id_message[1].split('\n')[0].strip()))
                     else:
+                        print("\n--- refreshing client list.")
                         self.get_clients()
                         from_client = self.get_user_by_id(id_message[0].strip())
+
                         if from_client is not None:
                             from_username = from_client.get_username(from_client)
                             print("message recieved from {0}: \"{1}\"".format(from_username, id_message[1].split('\n')[0].strip()))
                     # if the client didn't exist in our client list, try to
                     # refresh the list of connected clients first and try once more
+                elif command == "SUCC":
+                    self.id = data[4:].strip().decode()
 
                 elif command == "CONN":
                     id_user = words[1].split(':')
-                    self.clients.append(Client(userid=id_user[0].strip(), username=id_user[1].strip()))
+                    username = id_user[1].strip()
+                    print("\n--- {0} has joined the chatroom.".format(username))
+                    self.clients.append(Client(userid=id_user[0].strip(),
+                        username=username))
+
+                elif command == "DISC":
+                    id_user = words[1]
+
+                    for client in self.clients:
+                        if client.userid == id_user:
+                            clients.remove(client)
+                            print("\n--- {0} has left the chatroom.".format(client.username))
 
     def send(self, to, message):
         self.sock.send("SEND {0}:{1}\n".format(to, message).encode())
-
-    def new_client(self):
-        pass
-
-    def show_message(self):
-        pass
+        # print("recipient is not connected.")
 
 class Message:
     def init(self, client_id, content):
