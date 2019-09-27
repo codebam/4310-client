@@ -125,7 +125,7 @@ disconnect\n""")
     input("press enter to start...\n")
 
     print("connecting to server...")
-    server = Server("127.0.0.1", 3333)
+    server = Server("127.0.0.1", 59444)
     server.connect()
     # open socket to server
 
