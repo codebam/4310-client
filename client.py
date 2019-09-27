@@ -1,10 +1,30 @@
 import socket
 import threading
 
+'''
+FoocChat client 
+|
+| Name: Client.py
+|
+| Written by:  Kevin Dsane-Selby, Sean Behan
+|
+| Purpose: to enable user communication with the server to be done seamlessly
+|
+|
+|
+| Subroutines/libraries required:
+this is includes threading from the threading library to allow parallelism 
+| 
+
+
+'''
+
+
 VERSION = "FC1"
 user_input = [None] # global for input between threads
 
 class Client:
+    # connect and set ip and clients
     def __init__(self, username=None, userid=None):
         self.username = username
         self.userid = userid
@@ -20,20 +40,24 @@ class Server:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(None) # make socket non-blocking
         try:
+          #setting up connections for receiving and sending meassages using threading.
             self.sock.connect((self.ip, self.port))
             self.reciever = threading.Thread(target=self.recieve)
             self.reciever.daemon = True
             self.reciever.start()
             self.connected = True
             print("connected!")
+        # connection refused exception if the user doesen't exist
         except ConnectionRefusedError:
             self.connected = False
             print("connection refused.")
 
+ # creating login definition and format
     def login(self, username):
         self.sock.send("LOGN {0} {1}\n".format(username, VERSION).encode())
         self.get_clients()
 
+    # execute accepts a command and uses that to send a message to all users or one user and
     def execute(self, command):
         try:
             words = command.split(maxsplit=1)
@@ -68,7 +92,7 @@ class Server:
     def recieve(self):
         while True:
             data = self.sock.recv(256)
-
+# converts data into bytes to be used and commands are used to receive s
             if data != b'':
                 words = data.decode().split(maxsplit=1)
                 command = words[0]
@@ -108,10 +132,13 @@ class Server:
                             clients.remove(client)
                             print("\n--- {0} has left the chatroom.".format(client.username))
 
+
+
     def send(self, to, message):
         self.sock.send("SEND {0}:{1}\n".format(to, message).encode())
         # print("recipient is not connected.")
 
+ # class defines messages attatched with the users id for messages to be identified by the client
 class Message:
     def init(self, client_id, content):
         self.client_id = client_id
