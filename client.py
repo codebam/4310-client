@@ -1,6 +1,6 @@
 import socket
 import threading
-
+import asyncio
 '''
 FoocChat client 
 |
@@ -25,7 +25,7 @@ user_input = [None] # global for input between threads
 
 class Client:
     # connect and set ip and clients
-    def __init__(self, username=None, userid=None):
+     async def __init__(self, username=None, userid=None):
         self.username = username
         self.userid = userid
 
@@ -35,13 +35,14 @@ class Server:
         self.port = port
         self.clients = [Client()]
 
-    def connect(self):
+    def connect(self, transport):
         # connect and set ip and clients
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.settimeout(None) # make socket non-blocking
         try:
           #setting up connections for receiving and sending meassages using threading.
             self.sock.connect((self.ip, self.port))
+            self.transport = transport
             self.reciever = threading.Thread(target=self.recieve)
             self.reciever.daemon = True
             self.reciever.start()
