@@ -1,144 +1,38 @@
-import socket
-import threading
+import asyncio
+import json
 
-VERSION = "FC1"
-user_input = [None] # global for input between threads
+CLIENT_VERSION = 1
+
+
+class Connection:
+    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        self.reader = reader
+        self.writer = writer
+
 
 class Client:
-    def __init__(self, username=None, userid=None):
+    def __init__(self, username: str):
         self.username = username
-        self.userid = userid
 
-class Server:
-    def __init__(self, ip, port):
-        self.ip = ip
-        self.port = port
-        self.clients = [Client()]
+    async def connect(self):
+        reader, writer = await asyncio.open_connection("127.0.0.1", 8080)
+        self.conn = Connection(reader, writer)
 
-    def connect(self):
-        # connect and set ip and clients
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.settimeout(None) # make socket non-blocking
-        try:
-            self.sock.connect((self.ip, self.port))
-            self.reciever = threading.Thread(target=self.recieve)
-            self.reciever.daemon = True
-            self.reciever.start()
-            self.connected = True
-            print("connected!")
-        except ConnectionRefusedError:
-            self.connected = False
-            print("connection refused.")
+    async def login(self):
+        if self.conn is not None:
+            r = json.dumps(
+                {"version": CLIENT_VERSION, "from": self.username, "verb": "LOGN"}
+            )
+            self.conn.writer.write(r.encode())
+        else:
+            raise ConnectionError("must connect before logging in")
 
-    def login(self, username):
-        self.sock.send("LOGN {0} {1}\n".format(username, VERSION).encode())
-        self.get_clients()
 
-    def execute(self, command):
-        try:
-            words = command.split(maxsplit=1)
-            verb = words[0].lower()
+async def main():
+    c = Client(username=input("username: "))
+    await c.connect()
+    await c.login()
 
-            if verb == "send":
-                x = words[1].split(':', maxsplit=1)
-                to = x[0]
-                message = x[1]
-                self.send(to, message)
-            elif verb in ["sendall", "sendall:"]:
-                self.send(str(0), words[1])
-            elif verb == "disconnect":
-                self.disconnect()
-        except:
-            pass
-
-    def get_clients(self):
-        self.sock.send("WHOO\n".encode())
-
-    def disconnect(self):
-        self.sock.send("GDBY\n".encode())
-        self.connected = False
-
-    def get_user_by_id(self, userid):
-        for c in self.clients:
-            if c.userid == userid:
-                return c
-
-        return None
-
-    def recieve(self):
-        while True:
-            data = self.sock.recv(256)
-
-            if data != b'':
-                words = data.decode().split(maxsplit=1)
-                command = words[0]
-
-                if command == "RECV":
-                    id_message = words[1].split(':')
-                    from_client = self.get_user_by_id(id_message[0].strip())
-
-                    if from_client is not None:
-                        from_username = from_client.username
-                        print("message recieved from {0}: \"{1}\"".format(from_username, id_message[1].split('\n')[0].strip()))
-                    else:
-                        print("\n--- refreshing client list.")
-                        self.get_clients()
-                        from_client = self.get_user_by_id(id_message[0].strip())
-
-                        if from_client is not None:
-                            from_username = from_client.get_username(from_client)
-                            print("message recieved from {0}: \"{1}\"".format(from_username, id_message[1].split('\n')[0].strip()))
-                    # if the client didn't exist in our client list, try to
-                    # refresh the list of connected clients first and try once more
-                elif command == "SUCC":
-                    self.id = data[4:].strip().decode()
-
-                elif command == "CONN":
-                    id_user = words[1].split(':')
-                    username = id_user[1].strip()
-                    print("\n--- {0} has joined the chatroom.".format(username))
-                    self.clients.append(Client(userid=id_user[0].strip(),
-                        username=username))
-
-                elif command == "DISC":
-                    id_user = words[1]
-
-                    for client in self.clients:
-                        if client.userid == id_user:
-                            clients.remove(client)
-                            print("\n--- {0} has left the chatroom.".format(client.username))
-
-    def send(self, to, message):
-        self.sock.send("SEND {0}:{1}\n".format(to, message).encode())
-        # print("recipient is not connected.")
-
-class Message:
-    def init(self, client_id, content):
-        self.client_id = client_id
-        self.content = content
-
-def main():
-    print("example commands:")
-    print("""\nsend alice: hello
-sendall: hello world
-disconnect\n""")
-    input("press enter to start...\n")
-
-    print("connecting to server...")
-    server = Server("127.0.0.1", 59444)
-    server.connect()
-    # open socket to server
-
-    if server.connected:
-        username = str(input("Enter your username: "))
-        server.login(username)
-    # initiate connection
-
-    while server.connected:
-        command = str(input("enter a command: "))
-        server.execute(command)
-    # show prompt
-    print("connection closed.")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
