@@ -1,13 +1,8 @@
 import asyncio
 import json
+import pprint
 
 CLIENT_VERSION = 1
-
-
-class Connection:
-    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        self.reader = reader
-        self.writer = writer
 
 
 class Client:
@@ -15,27 +10,41 @@ class Client:
         self.username = username
 
     async def connect(self):
-        reader, writer = await asyncio.open_connection("127.0.0.1", 8080)
-        self.conn = Connection(reader, writer)
+        print("connecting...")
+        self.reader, self.writer = await asyncio.open_connection("127.0.0.1", 8080)
+        print("connected!")
 
     async def login(self):
-        if self.conn is not None:
+        print("logging in...")
+
+        if self.writer is not None:
             r = json.dumps(
                 {"version": CLIENT_VERSION, "from": self.username, "verb": "LOGN"}
             )
-            self.conn.writer.write(r.encode())
+            self.writer.write(r.encode())
         else:
             raise ConnectionError("must connect before logging in")
+        print("logged in!")
+
+    async def read_packets(self):
+        line = await self.reader.readline()
+
+        while line is not None:
+            self.handle_packet(line)
+
+    async def handle_packet(self, line):
+        packet = json.dumps(json.loads(line))
+        pp = pprint.PrettyPrinter(indent=4)
+        pp.pprint(packet)
+        # TODO
 
 
 async def main():
     c = Client(username=input("username: "))
-    print("connecting...")
     await c.connect()
-    print("connected!")
-    print("logging in...")
     await c.login()
-    print("logged in!")
+    await c.read_packets()
+    asyncio.run(c.read_packets())
 
 
 if __name__ == "__main__":
