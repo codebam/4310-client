@@ -30,8 +30,12 @@ class Client:
 
 async def main():
     c = Client(username=input("username: "))
+    print("connecting...")
     await c.connect()
+    print("connected!")
+    print("logging in...")
     await c.login()
+    print("logged in!")
 
 
 if __name__ == "__main__":
