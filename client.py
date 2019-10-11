@@ -1,9 +1,18 @@
 import trio
 import json
 import pprint
+from typing import List
 
 _CLIENT_VERSION = 1
 _RECEIVE_SIZE = 4096  # pretty arbitrary
+_HELP = """
+valid commands: send, sendall, disconnect
+
+examples: "send bob: hello"
+          "sendall: hello"
+          "disconnect"
+
+"""
 
 
 class TerminatedFrameReceiver:
@@ -54,6 +63,10 @@ class TerminatedFrameReceiver:
             raise StopAsyncIteration
 
 
+class InvalidCommand(Exception):
+    pass
+
+
 class Packet:
     def __init__(
         self,
@@ -75,35 +88,67 @@ class Packet:
             }
         )
 
-    def encode(self) -> bytes:
+    def _encode(self) -> bytes:
         return self.__json_packet.encode() + b"\n"
+
+    async def send(self, stream):
+        await stream.send_all(self._encode())
 
 
 class Client:
     def __init__(self, username: str):
         self.username = username
+        self.__queue: List[Packet] = []
 
     async def run(self, host="127.0.0.1", port=8080):
         self.__stream = await trio.open_tcp_stream(host, port)
 
-        async with trio.open_nursery() as nursery:
-            nursery.start_soon(self.__receiver)
-            nursery.start_soon(self.__sender)
+        send_channel, receive_channel = trio.open_memory_channel(0)
+        async with receive_channel, trio.open_nursery() as nursery:
+            nursery.start_soon(self.__sender, receive_channel)
+            nursery.start_soon(self.__receiver, send_channel)
+            nursery.start_soon(self.__logn, send_channel)
 
-    async def __logn(self):
-        p = Packet(_from=self.username, verb="LOGN")
-        await self.__stream.send_all(p.encode())
-        # d = """{ "version": 1, "from": "codebam", "verb": "LOGN" }\n"""
-        # await self.__stream.send_all(bytes(d, "utf8"))
+    async def __logn(self, send_channel):
+        await send_channel.send(Packet(_from=self.username, verb="LOGN"))
 
-    async def __sender(self):
-        await self.__logn()
-        # await self.__stream.aclose()
+    async def __sender(self, receive_channel):
+        async for packet in receive_channel:
+            await packet.send(self.__stream)
+        # send packets
 
-    async def __receiver(self):
+    async def __receiver(self, send_channel):
         chan = TerminatedFrameReceiver(self.__stream, b"\n")
         async for message in chan:
-            print(f"Got message: {message!r}")
+            decoded = json.loads(message)
+            verb = decoded["verb"]
+
+            if verb is "SUCC":
+                print("<logged in>")
+            else:
+                print("<received verb {}>".format(verb))
+            self.__show_prompt()
+        await self.__stream.aclose()
+
+    def __execute(self, command):
+        args = command.split(" ")
+        verb = args[0].lower()
+
+        if verb is "send":
+            self.__send()
+        elif verb is "sendall":
+            pass
+        elif verb is "disconnect":
+            pass
+        else:
+            raise InvalidCommand
+
+    def __show_prompt(self):
+        while True:
+            try:
+                self.__execute(input("command: ").strip())
+            except InvalidCommand:
+                print("\nInvalid Command Specified.", _HELP)
 
 
 async def main():
