@@ -101,14 +101,17 @@ class Client:
         self.__queue: List[Packet] = []
 
     async def run(self, host="127.0.0.1", port=8080):
-        self.__stream = await trio.open_tcp_stream(host, port)
+        try:
+            self.__stream = await trio.open_tcp_stream(host, port)
 
-        send_channel, receive_channel = trio.open_memory_channel(0)
-        async with receive_channel, trio.open_nursery() as nursery:
-            nursery.start_soon(self.__sender, receive_channel)
-            nursery.start_soon(self.__receiver, send_channel)
-            nursery.start_soon(self.__logn, send_channel)
-            nursery.start_soon(self.__show_prompt)
+            send_channel, receive_channel = trio.open_memory_channel(0)
+            async with receive_channel, trio.open_nursery() as nursery:
+                nursery.start_soon(self.__sender, receive_channel)
+                nursery.start_soon(self.__receiver, send_channel)
+                nursery.start_soon(self.__logn, send_channel)
+                nursery.start_soon(self.__show_prompt)
+        except trio.ClosedResourceError:
+            print("goodbye!")
 
     async def __logn(self, send_channel):
         await send_channel.send(Packet(_from=self.username, verb="LOGN"))
@@ -125,7 +128,13 @@ class Client:
             verb = decoded["verb"]
 
             if verb == "SUCC":
-                print("<logged in>")
+                print("logged in")
+            elif verb == "RECV":
+                print(
+                    "<{_from}> {message}".format(
+                        _from=decoded["from"], message=decoded["data"]
+                    )
+                )
             else:
                 print("<received verb {}>".format(verb))
         await self.__stream.aclose()
@@ -134,12 +143,16 @@ class Client:
         args = command.split(" ")
         verb = args[0].lower()
 
-        if verb is "send":
-            await self.__send()
-        elif verb is "sendall":
+        if verb == "send":
+            to = args[1]
+            packet = Packet(to=[args[1]], verb="SEND", data=" ".join(args[2:]))
+            await packet.send(self.__stream)
+        elif verb == "sendall":
             pass
-        elif verb is "disconnect":
-            pass
+        elif verb == "disconnect":
+            packet = Packet(verb="DISC")
+            await packet.send(self.__stream)
+            await self.__stream.aclose()
         else:
             raise InvalidCommand
 
@@ -150,7 +163,7 @@ class Client:
             try:
                 await self.__execute(input("command: ").strip())
             except InvalidCommand:
-                print("\nInvalid Command Specified.", _HELP)
+                print("\nInvalid command specified.", _HELP)
             # get user input
 
             await trio.sleep(0.25)
