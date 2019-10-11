@@ -108,6 +108,7 @@ class Client:
             nursery.start_soon(self.__sender, receive_channel)
             nursery.start_soon(self.__receiver, send_channel)
             nursery.start_soon(self.__logn, send_channel)
+            nursery.start_soon(self.__show_prompt)
 
     async def __logn(self, send_channel):
         await send_channel.send(Packet(_from=self.username, verb="LOGN"))
@@ -123,19 +124,18 @@ class Client:
             decoded = json.loads(message)
             verb = decoded["verb"]
 
-            if verb is "SUCC":
+            if verb == "SUCC":
                 print("<logged in>")
             else:
                 print("<received verb {}>".format(verb))
-            self.__show_prompt()
         await self.__stream.aclose()
 
-    def __execute(self, command):
+    async def __execute(self, command):
         args = command.split(" ")
         verb = args[0].lower()
 
         if verb is "send":
-            self.__send()
+            await self.__send()
         elif verb is "sendall":
             pass
         elif verb is "disconnect":
@@ -143,12 +143,18 @@ class Client:
         else:
             raise InvalidCommand
 
-    def __show_prompt(self):
+    async def __show_prompt(self):
         while True:
+            await trio.sleep(0.25)
+            # let other async threads do work
             try:
-                self.__execute(input("command: ").strip())
+                await self.__execute(input("command: ").strip())
             except InvalidCommand:
                 print("\nInvalid Command Specified.", _HELP)
+            # get user input
+
+            await trio.sleep(0.25)
+            # let other async threads do work
 
 
 async def main():
