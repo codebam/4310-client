@@ -1,6 +1,5 @@
 import trio
 import json
-import pprint
 from typing import List
 
 _CLIENT_VERSION = 1
@@ -101,18 +100,15 @@ class Client:
         self.username = username
         self.__queue: List[Packet] = []
 
-    async def run(self, host="127.0.0.1", port=682651):
-        try:
-            self.__stream = await trio.open_tcp_stream(host, port)
+    async def run(self, host="127.0.0.1", port=59944):
+        self.__stream = await trio.open_tcp_stream(host, port)
 
-            send_channel, receive_channel = trio.open_memory_channel(0)
-            async with receive_channel, trio.open_nursery() as nursery:
-                nursery.start_soon(self.__sender, receive_channel)
-                nursery.start_soon(self.__receiver, send_channel)
-                nursery.start_soon(self.__logn, send_channel)
-                nursery.start_soon(self.__show_prompt, send_channel)
-        except trio.ClosedResourceError:
-            print("goodbye!")
+        send_channel, receive_channel = trio.open_memory_channel(0)
+        async with receive_channel, trio.open_nursery() as nursery:
+            nursery.start_soon(self.__sender, receive_channel)
+            nursery.start_soon(self.__receiver, send_channel)
+            nursery.start_soon(self.__logn, send_channel)
+            nursery.start_soon(self.__show_prompt, send_channel)
 
     async def __logn(self, send_channel):
         await send_channel.send(Packet(_from=self.username, verb="LOGN"))
@@ -138,9 +134,12 @@ class Client:
                 )
             elif verb == "CONN":
                 print("user list:")
-                user_list = json.loads(json.loads(message)["data"])["conn"]
+                user_list = json.loads(decoded["data"])["conn"]
                 for user in user_list:
                     print(user)
+            elif verb == "DISC":
+                client_name = decoded["data"]
+                print("{} left the chat.".format(client_name))
             else:
                 print("<received verb that I don't understand. {}>".format(verb))
         await self.__stream.aclose()
@@ -192,6 +191,5 @@ async def main():
 if __name__ == "__main__":
     try:
         trio.run(main)
-    except KeyboardInterrupt:
-        pass
-    # don't crash on ctrl-c
+    except trio.ClosedResourceError:
+        print("goodbye!")
