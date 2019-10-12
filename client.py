@@ -190,4 +190,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    trio.run(main)
+    try:
+        trio.run(main)
+    except KeyboardInterrupt:
+        pass
+    # don't crash on ctrl-c
