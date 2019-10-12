@@ -6,11 +6,12 @@ from typing import List
 _CLIENT_VERSION = 1
 _RECEIVE_SIZE = 4096  # pretty arbitrary
 _HELP = """
-valid commands: send, sendall, disconnect
+valid commands: send, all, who, bye
 
-examples: "send bob: hello"
-          "sendall: hello"
-          "disconnect"
+examples: "send bob hello"
+          "all hello"
+          "who"
+          "bye"
 
 """
 
@@ -109,7 +110,7 @@ class Client:
                 nursery.start_soon(self.__sender, receive_channel)
                 nursery.start_soon(self.__receiver, send_channel)
                 nursery.start_soon(self.__logn, send_channel)
-                nursery.start_soon(self.__show_prompt)
+                nursery.start_soon(self.__show_prompt, send_channel)
         except trio.ClosedResourceError:
             print("goodbye!")
 
@@ -135,33 +136,46 @@ class Client:
                         _from=decoded["from"], message=decoded["data"]
                     )
                 )
+            elif verb == "CONN":
+                print("user list:")
+                user_list = json.loads(json.loads(message)["data"])["conn"]
+                for user in user_list:
+                    print(user)
             else:
-                print("<received verb {}>".format(verb))
+                print("<received verb that I don't understand. {}>".format(verb))
         await self.__stream.aclose()
 
-    async def __execute(self, command):
+    async def __execute(self, command, send_channel):
         args = command.split(" ")
         verb = args[0].lower()
 
         if verb == "send":
             to = args[1]
-            packet = Packet(to=[args[1]], verb="SEND", data=" ".join(args[2:]))
-            await packet.send(self.__stream)
-        elif verb == "sendall":
-            pass
-        elif verb == "disconnect":
-            packet = Packet(verb="DISC")
-            await packet.send(self.__stream)
+            packet = Packet(
+                _from=self.username, to=[args[1]], verb="SEND", data=" ".join(args[2:])
+            )
+        elif verb == "all":
+            packet = Packet(_from=self.username, verb="SALL", data=" ".join(args[1:]))
+        elif verb == "who":
+            packet = Packet(_from=self.username, verb="WHOO")
+        elif verb == "bye":
+            packet = Packet(_from=self.username, verb="DISC")
+            await send_channel.send(packet)
             await self.__stream.aclose()
+        elif verb == "":
+            return
+        # if the user presses return, just print a new prompt
+        # allows easier checking of messages
         else:
             raise InvalidCommand
+        await send_channel.send(packet)
 
-    async def __show_prompt(self):
+    async def __show_prompt(self, send_channel):
         while True:
             await trio.sleep(0.25)
             # let other async threads do work
             try:
-                await self.__execute(input("command: ").strip())
+                await self.__execute(input("command: ").strip(), send_channel)
             except InvalidCommand:
                 print("\nInvalid command specified.", _HELP)
             # get user input
