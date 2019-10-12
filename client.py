@@ -101,7 +101,7 @@ class Client:
         self.username = username
         self.__queue: List[Packet] = []
 
-    async def run(self, host="127.0.0.1", port=8080):
+    async def run(self, host="127.0.0.1", port=682651):
         try:
             self.__stream = await trio.open_tcp_stream(host, port)
 
