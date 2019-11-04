@@ -1,5 +1,7 @@
 import trio
 import json
+import hashlib
+ import crcmod
 from typing import List
 
 _CLIENT_VERSION = 1
@@ -77,6 +79,7 @@ class Packet:
         verb=None,
         data=None,
     ):
+    self.crcFunc = crcmod.predefined.mkCrcFun('crc-ccitt-false')
         self.__json_packet = json.dumps(
             {
                 "version": version,
@@ -85,6 +88,8 @@ class Packet:
                 "to": to,
                 "verb": verb,
                 "data": data,
+                "crc": crcFunc(bytes(data,'utf-8')),
+                #"check": sum(bytes(data,'utf-8'))%65536,
             }
         )
 
@@ -122,6 +127,10 @@ class Client:
         chan = TerminatedFrameReceiver(self.__stream, b"\n")
         async for message in chan:
             decoded = json.loads(message)
+
+if decoded['check'] != sum(bytes(decoded['data'],'utf-8'))%65536:
+                pass # this is bad we need to handle it!
+
             verb = decoded["verb"]
 
             if verb == "SUCC":
