@@ -1,7 +1,6 @@
 import trio
 import json
 import hashlib
- import crcmod
 from typing import List
 
 _CLIENT_VERSION = 1
@@ -78,8 +77,8 @@ class Packet:
         to=None,
         verb=None,
         data=None,
+        hash_fun=hashlib.sha256()
     ):
-    self.crcFunc = crcmod.predefined.mkCrcFun('crc-ccitt-false')
         self.__json_packet = json.dumps(
             {
                 "version": version,
@@ -88,10 +87,11 @@ class Packet:
                 "to": to,
                 "verb": verb,
                 "data": data,
-                "crc": crcFunc(bytes(data,'utf-8')),
+                "crc": self.hash_fun(bytes(data,'utf-8')),
                 #"check": sum(bytes(data,'utf-8'))%65536,
             }
         )
+        self.hash_fun = hash_fun
 
     def _encode(self) -> bytes:
         return self.__json_packet.encode() + b"\n"
@@ -104,7 +104,7 @@ class Client:
     def __init__(self, username: str):
         self.username = username
         self.__queue: List[Packet] = []
-
+        self.hash_fun = hashlib.sha256()
     async def run(self, host="127.0.0.1", port=59944):
         self.__stream = await trio.open_tcp_stream(host, port)
 
@@ -116,7 +116,7 @@ class Client:
             nursery.start_soon(self.__show_prompt, send_channel)
 
     async def __logn(self, send_channel):
-        await send_channel.send(Packet(_from=self.username, verb="LOGN"))
+        await send_channel.send(Packet(_from=self.username, verb="LOGN", hash_fun=self.hash_fun))
 
     async def __sender(self, receive_channel):
         async for packet in receive_channel:
