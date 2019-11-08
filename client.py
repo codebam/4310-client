@@ -77,7 +77,7 @@ class Packet:
         to=None,
         verb=None,
         data=None,
-        hash_fun=hashlib.sha256()
+        hash_fun=hashlib.sha256(),
     ):
         self.__json_packet = json.dumps(
             {
@@ -103,6 +103,7 @@ class Client:
         self.username = username
         self.__queue: List[Packet] = []
         self.hash_fun = hashlib.sha256()
+
     async def run(self, host="127.0.0.1", port=59944):
         self.__stream = await trio.open_tcp_stream(host, port)
 
@@ -114,7 +115,9 @@ class Client:
             nursery.start_soon(self.__show_prompt, send_channel)
 
     async def __logn(self, send_channel):
-        await send_channel.send(Packet(_from=self.username, verb="LOGN", hash_fun=self.hash_fun))
+        await send_channel.send(
+            Packet(_from=self.username, verb="LOGN", hash_fun=self.hash_fun)
+        )
 
     async def __sender(self, receive_channel):
         async for packet in receive_channel:
