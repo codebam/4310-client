@@ -1,5 +1,6 @@
 import trio
 import json
+import hashlib
 from typing import List
 
 _CLIENT_VERSION = 1
@@ -75,7 +76,8 @@ class Packet:
         _from=None,
         to=None,
         verb=None,
-        data=None,
+        data="",
+        hash_fun=hashlib.sha256,
     ):
         self.__json_packet = json.dumps(
             {
@@ -85,6 +87,7 @@ class Packet:
                 "to": to,
                 "verb": verb,
                 "data": data,
+                "checksum": hash_fun(bytes(data, "utf-8")).hexdigest(),
             }
         )
 
@@ -111,7 +114,9 @@ class Client:
             nursery.start_soon(self.__show_prompt, send_channel)
 
     async def __logn(self, send_channel):
-        await send_channel.send(Packet(_from=self.username, verb="LOGN"))
+        await send_channel.send(
+            Packet(_from=self.username, verb="LOGN", hash_fun=hashlib.sha256)
+        )
 
     async def __sender(self, receive_channel):
         async for packet in receive_channel:
