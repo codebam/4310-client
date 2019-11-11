@@ -1,7 +1,7 @@
 import trio
 import json
 import hashlib
-from typing import List
+from typing import List, Dict
 
 _CLIENT_VERSION = 1
 _RECEIVE_SIZE = 4096  # pretty arbitrary
@@ -102,6 +102,8 @@ class Client:
     def __init__(self, username: str):
         self.username = username
         self.__queue: List[Packet] = []
+        self.packet_number = 0
+        self.sent: Dict[int, Packet] = {}
 
     async def run(self, host="127.0.0.1", port=59944):
         self.__stream = await trio.open_tcp_stream(host, port)
@@ -120,15 +122,52 @@ class Client:
 
     async def __sender(self, receive_channel):
         async for packet in receive_channel:
+            self.sent[int(packet["number"])] = packet
+            # keep track of sent packets by number
+
             await packet.send(self.__stream)
         # send packets
 
+    async def __resend(self, send_channel, packet_number):
+        try:
+            await send_channel.send(self.sent[int(packet_number)])
+        except KeyError:
+            print("server requested a packet we don't have")
+        # request a packet to be resent
+
+    async def __resend_missed(self, send_channel, missed_packets):
+        # example:
+        # missed_packets = 4
+        # self.packet = 2
+        # server packet number = 6 (number on the last packet we recieved)
+        # we need to resend: 3, 4, 5, 6
+        for i in range(missed_packets):
+            self.__resend(send_channel, self.packet_number + i)
+
+    async def __request_resend(self, send_channel, packet_number):
+        await send_channel.send(Packet(number=packet_number, verb="RESEND"))
+
     async def __receiver(self, send_channel):
+        hash_fun = hashlib.sha256
         chan = TerminatedFrameReceiver(self.__stream, b"\n")
         async for message in chan:
             decoded = json.loads(message)
-            verb = decoded["verb"]
+            missed_packets = decoded["number"] - self.packet_number
+            if missed_packets > 1:
+                await __resend_missed(send_channel, missed_packets)
+                await trio.sleep(0.25)  # give time for packets to process
+                # wait until we recieve and process all the packets we've missed
+            else:
+                self.packet_number = decoded["number"]
+            # if we recieve the next packet, increment our packet number
+            if (
+                decoded["checksum"]
+                != hash_fun(bytes(decoded["data"], "utf-8")).hexdigest()
+            ):
+                this.__request_resend(decoded["number"])
+                # request this packet to be resent if the checksum doesn't match
 
+            verb = decoded["verb"]
             if verb == "SUCC":
                 print("logged in")
             elif verb == "RECV":
@@ -145,6 +184,8 @@ class Client:
             elif verb == "DISC":
                 client_name = decoded["data"]
                 print("{} left the chat.".format(client_name))
+            elif verb == "RESEND":
+                self.__resend(send_channel, decoded["number"])
             else:
                 print("<received verb that I don't understand. {}>".format(verb))
         await self.__stream.aclose()
