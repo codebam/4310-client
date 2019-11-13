@@ -1,6 +1,7 @@
 import trio
 import json
 import hashlib
+import random
 from typing import List, Dict
 
 _CLIENT_VERSION = 1
@@ -108,7 +109,19 @@ class Packet:
         return self.__json_packet.encode() + b"\n"
 
     async def send(self, stream):
+        r = random.random()
+        # random floating point between 0.0 and 1.0
+
+        if r > 0.9:
+            self.corrupt_checksum()
+        # corrupt the checksums of 10% of packets
+
         await stream.send_all(self._encode())
+
+    def corrupt_checksum(self, stream):
+        packet = json.loads(self.__json_packet)
+        packet["checksum"] = "BROKEN CHECKSUM :)"
+        self.__json_packet = json.dumps(packet)
 
 
 class Client:
