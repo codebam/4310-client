@@ -4,7 +4,7 @@ import hashlib
 import random
 from typing import List, Dict
 
-_CLIENT_VERSION = 1
+_CLIENT_VERSION = 2
 _RECEIVE_SIZE = 4096  # pretty arbitrary
 _HELP = """
 valid commands: send, all, who, bye
