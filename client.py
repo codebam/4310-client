@@ -79,6 +79,11 @@ class Packet:
         data="",
         hash_fun=hashlib.sha256,
     ):
+        if number is not None:
+            self._number = number
+        else:
+            self._number = 0
+
         self.__json_packet = json.dumps(
             {
                 "version": version,
@@ -90,6 +95,14 @@ class Packet:
                 "checksum": hash_fun(bytes(data, "utf-8")).hexdigest(),
             }
         )
+
+    @property
+    def number(self) -> int:
+        return int(self._number)
+
+    @number.setter
+    def number(self, x):
+        self._number = x
 
     def _encode(self) -> bytes:
         return self.__json_packet.encode() + b"\n"
@@ -103,6 +116,7 @@ class Client:
         self.username = username
         self.__queue: List[Packet] = []
         self.packet_number = 0
+        self.send_packet_number = 0
         self.sent: Dict[int, Packet] = {}
 
     async def run(self, host="127.0.0.1", port=59944):
@@ -122,13 +136,18 @@ class Client:
 
     async def __sender(self, receive_channel):
         async for packet in receive_channel:
-            self.sent[int(packet["number"])] = packet
+            self.sent[packet.number] = packet
             # keep track of sent packets by number
 
             await packet.send(self.__stream)
         # send packets
 
     async def __resend(self, send_channel, packet_number):
+        print(
+            "attempting resend of packet: {} {}".format(
+                packet_number, type(packet_number)
+            )
+        )
         try:
             await send_channel.send(self.sent[int(packet_number)])
         except KeyError:
@@ -160,11 +179,19 @@ class Client:
             else:
                 self.packet_number = decoded["number"]
             # if we recieve the next packet, increment our packet number
+
+            if decoded["data"] is not None:
+                pass
+            else:
+                decoded["data"] = ""
+            # str(None) == "None", so we must account for it or checksums for
+            # None will be wrong
+
             if (
                 decoded["checksum"]
-                != hash_fun(bytes(decoded["data"], "utf-8")).hexdigest()
+                != hash_fun(bytes(str(decoded["data"]), "utf-8")).hexdigest()
             ):
-                this.__request_resend(decoded["number"])
+                await self.__request_resend(send_channel, decoded["number"])
                 # request this packet to be resent if the checksum doesn't match
 
             verb = decoded["verb"]
@@ -185,7 +212,7 @@ class Client:
                 client_name = decoded["data"]
                 print("{} left the chat.".format(client_name))
             elif verb == "RESEND":
-                self.__resend(send_channel, decoded["number"])
+                await self.__resend(send_channel, decoded["data"])
             else:
                 print("<received verb that I don't understand. {}>".format(verb))
         await self.__stream.aclose()
@@ -193,18 +220,32 @@ class Client:
     async def __execute(self, command, send_channel):
         args = command.split(" ")
         verb = args[0].lower()
+        packet = None
 
         if verb == "send":
             to = args[1]
             packet = Packet(
-                _from=self.username, to=[args[1]], verb="SEND", data=" ".join(args[2:])
+                _from=self.username,
+                to=[args[1]],
+                verb="SEND",
+                data="".join(args[2:]),
+                number=self.send_packet_number,
             )
         elif verb == "all":
-            packet = Packet(_from=self.username, verb="SALL", data=" ".join(args[1:]))
+            packet = Packet(
+                _from=self.username,
+                verb="SALL",
+                data="".join(args[1:]),
+                number=self.send_packet_number,
+            )
         elif verb == "who":
-            packet = Packet(_from=self.username, verb="WHOO")
+            packet = Packet(
+                _from=self.username, verb="WHOO", number=self.send_packet_number
+            )
         elif verb == "bye":
-            packet = Packet(_from=self.username, verb="DISC")
+            packet = Packet(
+                _from=self.username, verb="DISC", number=self.send_packet_number
+            )
             await send_channel.send(packet)
             await self.__stream.aclose()
         elif verb == "":
@@ -213,7 +254,11 @@ class Client:
         # allows easier checking of messages
         else:
             raise InvalidCommand
-        await send_channel.send(packet)
+
+        if packet is not None:
+            await send_channel.send(packet)
+            self.send_packet_number += 1
+        # increment packet number after sending
 
     async def __show_prompt(self, send_channel):
         while True:
