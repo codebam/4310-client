@@ -118,7 +118,7 @@ class Packet:
 
         await stream.send_all(self._encode())
 
-    def corrupt_checksum(self, stream):
+    def corrupt_checksum(self):
         packet = json.loads(self.__json_packet)
         packet["checksum"] = "BROKEN CHECKSUM :)"
         self.__json_packet = json.dumps(packet)
